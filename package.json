@@ -8,9 +8,11 @@
     "build": "nuxt build",
     "start": "nuxt start",
     "lint": "eslint .",
+    "prisma": "prisma generate && prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "create-user": "node --env-file=.env scripts/create-user.mjs"
+    "create-user": "node --env-file=.env scripts/create-user.mjs",
+    "seed-orders": "node --env-file=.env scripts/seed-orders.mjs"
   },
   "dependencies": {
     "nuxt": "latest",

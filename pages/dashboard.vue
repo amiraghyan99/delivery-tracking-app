@@ -1,64 +1,49 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold text-slate-800">My deliveries</h1>
-        <p class="text-sm text-slate-500">Create and track your delivery orders.</p>
-      </div>
-      <button
-        class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700"
-        @click="openCreate"
-      >
-        + New order
-      </button>
-    </div>
+    <DataTable
+      title="My deliveries"
+      description="Create and track your delivery orders."
+      :columns="columns"
+      :rows="orders"
+      :total="total"
+      :bulk-actions="bulkActions"
+      :row-actions="rowActions"
+      :page-size="25"
+      :filters="statusFilters"
+      search-placeholder="Search by tracking code or item name…"
+      create-label="+ New order"
+      @create="openCreate"
+      @row-action="onRowAction"
+      @bulk-action="onBulkAction"
+      @query-change="onQueryChange"
+    >
+      <template #cell-trackingCode="{ value }">
+        <span class="font-mono text-xs text-slate-800">{{ value }}</span>
+      </template>
 
-    <div v-if="orders.length === 0" class="bg-white border border-dashed border-slate-300 rounded-xl p-8 text-center text-sm text-slate-500">
-      You have no orders yet. Click <span class="font-semibold text-slate-700">New order</span> to create your first one.
-    </div>
+      <template #cell-items="{ row }">
+        <div class="text-xs text-slate-700">
+          <div v-for="item in row.items" :key="item.id" class="leading-5">
+            <span class="font-medium">{{ item.name }}</span>
+            <span class="text-slate-400 ml-1 font-mono">{{ item.sourceTrackingCode }}</span>
+          </div>
+          <span v-if="!row.items?.length" class="text-slate-400">—</span>
+        </div>
+      </template>
 
-    <div v-else class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <table class="min-w-full text-sm">
-        <thead class="bg-slate-50 border-b border-slate-200">
-          <tr>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Tracking code</th>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Items</th>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Created</th>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="order in orders"
-            :key="order.id"
-            class="border-b border-slate-100 hover:bg-slate-50"
-          >
-            <td class="px-4 py-3 font-mono text-xs text-slate-800">{{ order.trackingCode }}</td>
-            <td class="px-4 py-3 text-xs text-slate-700">
-              <div v-for="item in order.items" :key="item.id" class="leading-5">
-                <span class="font-medium">{{ item.name }}</span>
-                <span class="text-slate-400 ml-1 font-mono">{{ item.sourceTrackingCode }}</span>
-              </div>
-            </td>
-            <td class="px-4 py-3">
-              <span
-                class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
-                :style="{ backgroundColor: order.statusColor ?? '#94a3b8' }"
-              >
-                {{ order.statusName }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-xs text-slate-500">{{ formatDate(order.createdAt) }}</td>
-            <td class="px-4 py-3 text-xs flex gap-3">
-              <NuxtLink :to="`/track?code=${encodeURIComponent(order.trackingCode)}`" class="text-primary-700 hover:underline">Track</NuxtLink>
-              <button class="text-slate-600 hover:underline" @click="openEdit(order)">Edit</button>
-              <button class="text-red-600 hover:underline" @click="openDelete(order)">Delete</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <template #cell-statusName="{ row }">
+        <span
+          class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+          :style="{ backgroundColor: row.statusColor ?? '#94a3b8' }"
+        >
+          {{ row.statusName }}
+        </span>
+      </template>
+
+      <template #cell-createdAt="{ value }">
+        <span class="text-xs text-slate-500">{{ formatDate(value) }}</span>
+      </template>
+    </DataTable>
 
     <!-- Create / Edit order modal -->
     <AppModal v-model="showForm" :title="editingOrder ? 'Edit order' : 'New delivery order'">
@@ -120,10 +105,17 @@
       </template>
     </AppModal>
 
-    <!-- Delete confirmation modal -->
+    <!-- Delete confirmation modal (single or bulk) -->
     <AppModal v-model="showDelete" title="Delete order">
       <div class="space-y-3">
-        <p class="text-sm text-slate-700">Are you sure you want to delete order <span class="font-mono font-semibold">{{ deletingOrder?.trackingCode }}</span>? This action cannot be undone.</p>
+        <p v-if="deleteTargetOrders.length === 1" class="text-sm text-slate-700">
+          Are you sure you want to delete order
+          <span class="font-mono font-semibold">{{ deleteTargetOrders[0]?.trackingCode }}</span>?
+          This action cannot be undone.
+        </p>
+        <p v-else class="text-sm text-slate-700">
+          Delete <span class="font-semibold">{{ deleteTargetOrders.length }}</span> orders? This cannot be undone.
+        </p>
         <p v-if="deleteError" class="text-xs text-red-600">{{ deleteError }}</p>
       </div>
       <template #footer>
@@ -147,18 +139,72 @@
 
 <script setup lang="ts">
 import type { OrderDto } from '~/types'
+import type { Column, TableAction, TableFilter, TableQuery } from '~/components/DataTable.vue'
+import type { OrdersQuery } from '~/composables/useOrders'
 
 definePageMeta({ role: 'CUSTOMER' })
 
-const { orders, fetchOrders, createOrder, updateOrder, deleteOrder } = useOrders()
+const { orders, total, fetchOrders, createOrder, updateOrder, deleteOrder, bulkDeleteOrders } = useOrders()
+const { statuses, fetchStatuses } = useStatuses()
 
-onMounted(async () => {
-  await fetchOrders()
-})
+onMounted(() => fetchStatuses())
 
 const formatDate = (iso: string) => new Date(iso).toLocaleString()
 
-// --- Create / Edit modal ---
+const lastQuery = ref<OrdersQuery>({})
+
+async function onQueryChange(q: TableQuery) {
+  const params: OrdersQuery = {
+    page: q.page,
+    pageSize: q.pageSize,
+    search: q.search || undefined,
+    sortKey: q.sortKey || undefined,
+    sortDir: q.sortDir || undefined,
+    searchFields: q.searchFields.length ? q.searchFields : undefined,
+    statusId: q.activeFilters.statusId ? Number(q.activeFilters.statusId) : undefined,
+    skipCount: !q.countNeeded,
+  }
+  lastQuery.value = params
+  await fetchOrders(params)
+}
+
+async function refetch() {
+  await fetchOrders(lastQuery.value)
+}
+
+const statusFilters = computed((): TableFilter[] => [
+  { key: 'statusId', label: 'Status', options: statuses.value.map((s) => ({ label: s.name, value: s.id })) },
+])
+
+const columns: Column[] = [
+  { key: 'trackingCode', label: 'Tracking code', sortable: true, searchable: true },
+  { key: 'items', label: 'Items', searchable: true },
+  { key: 'statusName', label: 'Status', sortable: true },
+  { key: 'createdAt', label: 'Created', sortable: true },
+]
+
+const bulkActions: TableAction[] = [
+  { key: 'delete', label: 'Delete', variant: 'danger' },
+]
+
+const rowActions: TableAction[] = [
+  { key: 'track', label: 'Track' },
+  { key: 'edit', label: 'Edit' },
+  { key: 'delete', label: 'Delete', variant: 'danger' },
+]
+
+function onRowAction(key: string, row: Record<string, any>) {
+  const order = row as OrderDto
+  if (key === 'track') navigateTo(`/track?code=${encodeURIComponent(order.trackingCode)}`)
+  else if (key === 'edit') openEdit(order)
+  else if (key === 'delete') openDelete([order])
+}
+
+function onBulkAction(key: string, rows: Record<string, any>[]) {
+  if (key === 'delete') openDelete(rows as OrderDto[])
+}
+
+// ---- Create / Edit modal ----
 const showForm = ref(false)
 const editingOrder = ref<OrderDto | null>(null)
 const formSaving = ref(false)
@@ -194,6 +240,7 @@ async function onSubmitForm() {
       await createOrder(items)
     }
     showForm.value = false
+    await refetch()
   } catch (e: any) {
     formError.value = e?.data?.statusMessage || 'Failed to save order'
   } finally {
@@ -201,25 +248,25 @@ async function onSubmitForm() {
   }
 }
 
-// --- Delete modal ---
+// ---- Delete modal (single or bulk) ----
 const showDelete = ref(false)
-const deletingOrder = ref<OrderDto | null>(null)
+const deleteTargetOrders = ref<OrderDto[]>([])
 const deleting = ref(false)
 const deleteError = ref<string | null>(null)
 
-function openDelete(order: OrderDto) {
-  deletingOrder.value = order
+function openDelete(targetOrders: OrderDto[]) {
+  deleteTargetOrders.value = targetOrders
   deleteError.value = null
   showDelete.value = true
 }
 
 async function onConfirmDelete() {
-  if (!deletingOrder.value) return
   deleting.value = true
   deleteError.value = null
   try {
-    await deleteOrder(deletingOrder.value.id)
+    await Promise.all(deleteTargetOrders.value.map((o) => deleteOrder(o.id)))
     showDelete.value = false
+    await refetch()
   } catch (e: any) {
     deleteError.value = e?.data?.statusMessage || 'Failed to delete order'
   } finally {

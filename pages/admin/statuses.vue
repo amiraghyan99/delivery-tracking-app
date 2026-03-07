@@ -1,61 +1,26 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold text-slate-800">Order statuses</h1>
-        <p class="text-sm text-slate-500">Drag rows to reorder. Changes are saved automatically.</p>
-      </div>
-      <button
-        class="inline-flex items-center rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-primary-700"
-        @click="openCreate"
-      >
-        + New status
-      </button>
-    </div>
+    <DataTable
+      title="Order statuses"
+      description="Drag rows to reorder. Changes are saved automatically."
+      :columns="columns"
+      :rows="statuses"
+      :row-actions="rowActions"
+      :draggable="true"
+      create-label="+ New status"
+      search-placeholder="Search statuses…"
+      @create="openCreate"
+      @row-action="onRowAction"
+      @reorder="onReorder"
+    >
+      <template #cell-color="{ row }">
+        <span
+          class="inline-block w-5 h-5 rounded-full border border-slate-200"
+          :style="{ backgroundColor: row.color ?? '#94a3b8' }"
+        />
+      </template>
+    </DataTable>
 
-    <!-- Statuses list -->
-    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <table class="min-w-full text-sm">
-        <thead class="bg-slate-50 border-b border-slate-200">
-          <tr>
-            <th class="px-2 py-3 w-8" />
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Color</th>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Name</th>
-            <th class="px-4 py-3 text-left font-semibold text-xs text-slate-500">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(s, idx) in statuses"
-            :key="s.id"
-            draggable="true"
-            class="border-b border-slate-100 transition-colors"
-            :class="{
-              'bg-primary-50 border-primary-200': dragOverIndex === idx,
-              'opacity-40': dragSourceIndex === idx,
-              'cursor-grabbing': dragSourceIndex === idx,
-            }"
-            @dragstart="onDragStart(idx)"
-            @dragover.prevent="onDragOver(idx)"
-            @drop.prevent="onDrop"
-            @dragend="onDragEnd"
-          >
-            <td class="px-2 py-3 text-slate-400 cursor-grab select-none text-center">⠿</td>
-            <td class="px-4 py-3">
-              <span
-                class="inline-block w-5 h-5 rounded-full border border-slate-200"
-                :style="{ backgroundColor: s.color ?? '#94a3b8' }"
-              />
-            </td>
-            <td class="px-4 py-3 text-xs font-medium text-slate-800">{{ s.name }}</td>
-            <td class="px-4 py-3 flex gap-3 text-xs">
-              <button class="text-primary-700 hover:underline" @click="openEdit(s)">Edit</button>
-              <button class="text-red-600 hover:underline" @click="onDelete(s.id)">Delete</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
     <p v-if="deleteError" class="mt-2 text-xs text-red-600">{{ deleteError }}</p>
 
     <!-- Create / Edit modal -->
@@ -104,6 +69,7 @@
 
 <script setup lang="ts">
 import type { StatusDto } from '~/types'
+import type { Column, TableAction } from '~/components/DataTable.vue'
 
 definePageMeta({ role: 'ADMIN' })
 
@@ -111,35 +77,32 @@ const { statuses, fetchStatuses, createStatus, updateStatus, deleteStatus } = us
 
 onMounted(() => fetchStatuses())
 
-// --- Drag and drop ---
-const dragSourceIndex = ref<number | null>(null)
-const dragOverIndex = ref<number | null>(null)
+const columns: Column[] = [
+  { key: 'color', label: 'Color' },
+  { key: 'name', label: 'Name', sortable: true, searchable: true },
+]
 
-function onDragStart(idx: number) { dragSourceIndex.value = idx }
-function onDragOver(idx: number) { dragOverIndex.value = idx }
+const rowActions: TableAction[] = [
+  { key: 'edit', label: 'Edit' },
+  { key: 'delete', label: 'Delete', variant: 'danger' },
+]
 
-async function onDrop() {
-  const from = dragSourceIndex.value
-  const to = dragOverIndex.value
-  if (from === null || to === null || from === to) return
-  const reordered = [...statuses.value]
-  const [moved] = reordered.splice(from, 1)
-  if (!moved) return
-  reordered.splice(to, 0, moved)
-  statuses.value = reordered
+function onRowAction(key: string, row: Record<string, any>) {
+  const s = row as StatusDto
+  if (key === 'edit') openEdit(s)
+  else if (key === 'delete') onDelete(s.id)
+}
+
+async function onReorder(reorderedRows: Record<string, any>[]) {
+  statuses.value = reorderedRows as StatusDto[]
   await Promise.all(
-    reordered.map((s, idx) => {
+    reorderedRows.map((s, idx) => {
       if (s.sortOrder !== idx) return updateStatus(s.id, { sortOrder: idx }, { reorder: false })
     })
   )
 }
 
-function onDragEnd() {
-  dragSourceIndex.value = null
-  dragOverIndex.value = null
-}
-
-// --- Modal ---
+// ---- Modal ----
 const showForm = ref(false)
 const editingStatus = ref<StatusDto | null>(null)
 const formError = ref<string | null>(null)

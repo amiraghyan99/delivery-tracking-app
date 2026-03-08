@@ -158,8 +158,8 @@ const statusFilters = computed((): TableFilter[] => [
 const columns: Column[] = [
   { key: 'trackingCode', label: 'Tracking code', sortable: true, searchable: true },
   { key: 'customerName', label: 'Customer', sortable: true, searchable: true },
-  { key: 'items', label: 'Items' },
-  { key: 'statusName', label: 'Status', sortable: true, searchable: true },
+  { key: 'items', label: 'Items', searchable: true },
+  { key: 'statusName', label: 'Status', sortable: true },
   { key: 'createdAt', label: 'Created', sortable: true },
 ]
 

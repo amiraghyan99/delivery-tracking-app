@@ -30,12 +30,14 @@ export default defineEventHandler(async (event) => {
 
   if (user.role === 'ADMIN') {
     const has = (f: string) => !searchFields.length || searchFields.includes(f)
-    const adminOrClauses = search ? [
-      has('trackingCode') ? { trackingCode: { contains: search } } : null,
-      has('statusName') ? { status: { name: { contains: search } } } : null,
-      has('customerName') ? { customer: { name: { contains: search } } } : null,
-      has('customerName') ? { customer: { email: { contains: search } } } : null,
-    ].filter((c): c is NonNullable<typeof c> => c !== null) : []
+    const adminOrClauses = search
+      ? [
+        has('trackingCode') ? { trackingCode: { contains: search } } : null,
+        has('customerName') ? { customer: { name: { contains: search } } } : null,
+        has('customerName') ? { customer: { email: { contains: search } } } : null,
+        has('items') ? { items: { some: { name: { contains: search } } } } : null,
+      ].filter((c): c is NonNullable<typeof c> => c !== null)
+      : []
     const where = {
       ...(adminOrClauses.length ? { OR: adminOrClauses } : {}),
       ...(statusId ? { statusId } : {}),
@@ -79,7 +81,6 @@ export default defineEventHandler(async (event) => {
   const has = (f: string) => !searchFields.length || searchFields.includes(f)
   const customerOrClauses = search ? [
     has('trackingCode') ? { trackingCode: { contains: search } } : null,
-    has('statusName') ? { status: { name: { contains: search } } } : null,
     has('items') ? { items: { some: { name: { contains: search } } } } : null,
   ].filter((c): c is NonNullable<typeof c> => c !== null) : []
   const where = {
